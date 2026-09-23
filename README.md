@@ -23,7 +23,7 @@ If your package manager blocks Puppeteer's browser download:
 npx puppeteer browsers install chrome
 ```
 
-Puppeteer currently publishes a much newer 25.x line; this project has been upgraded from the old 19.x dependency. citeturn3search0
+The repository keeps its existing lockfile-compatible Puppeteer dependency for now; upgrade dependencies only after local testing confirms compatibility.
 
 ## Configuration
 
@@ -52,6 +52,12 @@ LINKEDIN_EMAIL="your-email" LINKEDIN_PASSWORD="your-password" npm run start
 ```
 
 All other job/application settings remain in `config.ts`.
+
+### Resume-based job profile
+
+The included `sample_config.ts` is configured around the supplied resume and searches broadly for Easy Apply roles related to AI/LLM evaluation, AI training and data work, coding/model evaluation, software QA, search and ads quality, translation, MTPE, localization, transcription, language work, data analysis/validation, annotation, content QA, patent/technical research, and other roles matching those skills. The search is set to India with remote, on-site, and hybrid work enabled.
+
+There is **no salary filter or salary expectation** in the sample configuration. Salary questions are not pre-filled, so they remain available for your review when an employer requires an answer.
 
 ## What the program does
 
