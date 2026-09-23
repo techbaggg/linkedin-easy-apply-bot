@@ -5,13 +5,6 @@ import fillFields from '../apply-form/fillFields';
 import waitForNoError from '../apply-form/waitForNoError';
 import clickNextButton from '../apply-form/clickNextButton';
 
-const noop = () => { };
-
-async function clickEasyApplyButton(page: Page): Promise<void> {
-  await page.waitForSelector(selectors.easyApplyButtonEnabled, { timeout: 10000 });
-  await page.click(selectors.easyApplyButtonEnabled);
-}
-
 export interface ApplicationFormData {
   phone: string;
   cvPath: string;
@@ -29,38 +22,62 @@ interface Params {
   page: Page;
   link: string;
   formData: ApplicationFormData;
-  shouldSubmit: boolean;
 }
 
-async function apply({ page, link, formData, shouldSubmit }: Params): Promise<void> {
-  await page.goto(link, { waitUntil: 'load', timeout: 60000 });
+async function apply({ page, link, formData }: Params): Promise<void> {
+  await page.goto(link, {
+    waitUntil: 'domcontentloaded',
+    timeout: 60000
+  });
 
   try {
-    await clickEasyApplyButton(page);
+    await page.waitForSelector(selectors.easyApplyButtonEnabled, { timeout: 15000 });
+    await page.click(selectors.easyApplyButtonEnabled);
   } catch {
-    console.log(`Easy apply button not found in posting: ${link}`);
+    console.log(`Easy Apply was not available: ${link}`);
     return;
   }
 
-  let maxPages = 5;
+  for (let step = 0; step < 8; step++) {
+    await page.waitForSelector(selectors.modal, { visible: true, timeout: 10000 }).catch(() => undefined);
 
-  while (maxPages--) {
-    await fillFields(page, formData).catch(noop);
+    await fillFields(page, formData).catch((error) => {
+      console.log('Some fields could not be filled:', error instanceof Error ? error.message : error);
+    });
 
-    await clickNextButton(page).catch(noop);
+    const submitButton = await page.$(selectors.submit);
+    if (submitButton) {
+      console.log('\nApplication is ready for your review.');
+      console.log('The Submit button will NOT be clicked automatically.');
+      await page.bringToFront();
+      await new Promise<void>((resolve) => {
+        process.stdin.once('data', () => resolve());
+        console.log('Review the application in the browser, then press Enter here to continue to the next job.');
+      });
+      return;
+    }
 
-    await waitForNoError(page).catch(noop);
+    const next = await page.$(selectors.nextButton);
+    if (!next) {
+      await waitForNoError(page).catch(() => undefined);
+      throw new Error('Neither a Next/Review button nor a final Submit button was found.');
+    }
+
+    const disabled = await next.evaluate((el) => (el as HTMLButtonElement).disabled);
+    if (disabled) {
+      console.log('Next/Review is disabled. Review the highlighted fields manually.');
+      await new Promise<void>((resolve) => {
+        process.stdin.once('data', () => resolve());
+      });
+      return;
+    }
+
+    await next.click();
+    await waitForNoError(page).catch(() => undefined);
+    await new Promise(resolve => setTimeout(resolve, 800));
   }
 
-  const submitButton = await page.$(selectors.submit);
-
-  if (!submitButton) {
-    throw new Error('Submit button not found');
-  }
-
-  if (shouldSubmit) {
-    await submitButton.click();
-  }
+  throw new Error('Application form exceeded the supported number of steps.');
 }
 
 export default apply;
