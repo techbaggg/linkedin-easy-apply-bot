@@ -48,15 +48,16 @@ if (!email || !password) {
       jobDescriptionLanguages: config.JOB_DESCRIPTION_LANGUAGES
     });
 
-    let applicationPage: Page | undefined;
+    let applicationPage: Page;
 
     for await (const [link, title, companyName] of linkGenerator) {
-      if (!applicationPage || process.env.SINGLE_PAGE !== "true") {
+      if (process.env.SINGLE_PAGE === "true" && applicationPage) {
+        // Reuse the existing application page when explicitly requested.
+      } else {
         applicationPage = await context.newPage();
       }
 
-      const currentApplicationPage = applicationPage;
-      await currentApplicationPage.bringToFront();
+      await applicationPage.bringToFront();
 
       try {
         const formData: ApplicationFormData = {
@@ -72,7 +73,7 @@ if (!email || !password) {
           multipleChoiceFields: config.MULTIPLE_CHOICE_FIELDS,
         };
 
-        await apply({ page: currentApplicationPage, link, formData });
+        await apply({ page: applicationPage, link, formData });
         console.log(`Prepared: ${title} at ${companyName}`);
       } catch (error) {
         console.log(`Could not prepare ${title} at ${companyName}:`, error);
