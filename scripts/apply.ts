@@ -27,7 +27,10 @@ if (!email || !password) {
   });
 
   try {
-    const context = await browser.createBrowserContext();
+    const browserAny = browser as any;
+    const context = browserAny.createBrowserContext
+      ? await browserAny.createBrowserContext()
+      : await browserAny.createIncognitoBrowserContext();
     const listingPage = await context.newPage();
 
     await login({ page: listingPage, email, password });
