@@ -1,4 +1,5 @@
-import puppeteer, { Page } from "puppeteer";
+import puppeteer from "puppeteer";
+import { Page } from "puppeteer";
 import config from "../config";
 
 import ask from "../utils/ask";
@@ -6,105 +7,79 @@ import login from "../login";
 import apply, { ApplicationFormData } from "../apply";
 import fetchJobLinksUser from "../fetch/fetchJobLinksUser";
 
-interface AppState {
-  paused: boolean;
-}
-
 const wait = (time: number) => new Promise((resolve) => setTimeout(resolve, time));
 
-const state: AppState = {
-  paused: false,
-};
+const getConfigValue = (name: string, fallback: string): string =>
+  process.env[name] ?? fallback;
 
-const askForPauseInput = async () => {
-  await ask("press enter to pause the program");
+const email = getConfigValue("LINKEDIN_EMAIL", config.LINKEDIN_EMAIL);
+const password = getConfigValue("LINKEDIN_PASSWORD", config.LINKEDIN_PASSWORD);
 
-  state.paused = true;
-
-  await ask("finishing job application...\n");
-
-  state.paused = false;
-  console.log("unpaused");
-
-  askForPauseInput();
-};
+if (!email || !password) {
+  throw new Error("Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD as environment variables or in config.ts.");
+}
 
 (async () => {
   const browser = await puppeteer.launch({
     headless: false,
-    ignoreHTTPSErrors: true,
-    args: ["--disable-setuid-sandbox", "--no-sandbox",]
-  });
-  const context = await browser.createIncognitoBrowserContext();
-  const listingPage = await context.newPage();
-
-  const pages = await browser.pages();
-
-  await pages[0].close();
-
-  await login({
-    page: listingPage,
-    email: config.LINKEDIN_EMAIL,
-    password: config.LINKEDIN_PASSWORD
+    ignoreHTTPSErrors: false,
+    args: ["--disable-setuid-sandbox", "--no-sandbox"]
   });
 
-  askForPauseInput();
+  try {
+    const context = await browser.createBrowserContext();
+    const listingPage = await context.newPage();
 
-  const linkGenerator = fetchJobLinksUser({
-    page: listingPage,
-    location: config.LOCATION,
-    keywords: config.KEYWORDS,
-    workplace: {
-      remote: config.WORKPLACE.REMOTE,
-      onSite: config.WORKPLACE.ON_SITE,
-      hybrid: config.WORKPLACE.HYBRID,
-    },
-    jobTitle: config.JOB_TITLE,
-    jobDescription: config.JOB_DESCRIPTION,
-    jobDescriptionLanguages: config.JOB_DESCRIPTION_LANGUAGES
-  });
+    await login({ page: listingPage, email, password });
 
-  let applicationPage: Page | null = null;
+    const linkGenerator = fetchJobLinksUser({
+      page: listingPage,
+      location: config.LOCATION,
+      keywords: config.KEYWORDS,
+      workplace: {
+        remote: config.WORKPLACE.REMOTE,
+        onSite: config.WORKPLACE.ON_SITE,
+        hybrid: config.WORKPLACE.HYBRID,
+      },
+      jobTitle: config.JOB_TITLE,
+      jobDescription: config.JOB_DESCRIPTION,
+      jobDescriptionLanguages: config.JOB_DESCRIPTION_LANGUAGES
+    });
 
-  for await (const [link, title, companyName] of linkGenerator) {
-    if (!applicationPage || process.env.SINGLE_PAGE !== "true")
-      applicationPage = await context.newPage();
+    let applicationPage: Page | null = null;
 
-    await applicationPage.bringToFront();
+    for await (const [link, title, companyName] of linkGenerator) {
+      if (!applicationPage || process.env.SINGLE_PAGE !== "true") {
+        applicationPage = await context.newPage();
+      }
 
-    try {
-      const formData: ApplicationFormData = {
-        phone: config.PHONE,
-        cvPath: config.CV_PATH,
-        homeCity: config.HOME_CITY,
-        coverLetterPath: config.COVER_LETTER_PATH,
-        yearsOfExperience: config.YEARS_OF_EXPERIENCE,
-        languageProficiency: config.LANGUAGE_PROFICIENCY,
-        requiresVisaSponsorship: config.REQUIRES_VISA_SPONSORSHIP,
-        booleans: config.BOOLEANS,
-        textFields: config.TEXT_FIELDS,
-        multipleChoiceFields: config.MULTIPLE_CHOICE_FIELDS,
-      };
+      await applicationPage.bringToFront();
 
-      await apply({
-        page: applicationPage,
-        link,
-        formData,
-        shouldSubmit: process.argv[2] === "SUBMIT",
-      });
+      try {
+        const formData: ApplicationFormData = {
+          phone: config.PHONE,
+          cvPath: config.CV_PATH,
+          homeCity: config.HOME_CITY,
+          coverLetterPath: config.COVER_LETTER_PATH,
+          yearsOfExperience: config.YEARS_OF_EXPERIENCE,
+          languageProficiency: config.LANGUAGE_PROFICIENCY,
+          requiresVisaSponsorship: config.REQUIRES_VISA_SPONSORSHIP,
+          booleans: config.BOOLEANS,
+          textFields: config.TEXT_FIELDS,
+          multipleChoiceFields: config.MULTIPLE_CHOICE_FIELDS,
+        };
 
-      console.log(`Applied to ${title} at ${companyName}`);
-    } catch {
-      console.log(`Error applying to ${title} at ${companyName}`);
+        await apply({ page: applicationPage, link, formData });
+        console.log(`Prepared: ${title} at ${companyName}`);
+      } catch (error) {
+        console.log(`Could not prepare ${title} at ${companyName}:`, error);
+      }
+
+      await listingPage.bringToFront();
+      await wait(1500);
     }
-
-    await listingPage.bringToFront();
-
-    for(let shouldLog = true; state.paused; shouldLog = false){
-	shouldLog && console.log("\nProgram paused, press enter to continue the program");
-	await wait(2000);
-    }
+  } finally {
+    // Keep the browser open for manual review and troubleshooting.
+    console.log("\nBrowser left open. Close it manually when finished.");
   }
-
-  // await browser.close();
 })();
