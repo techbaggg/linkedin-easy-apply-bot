@@ -1,4 +1,5 @@
 import puppeteer from "puppeteer";
+import path from "path";
 
 import config from "../sample_config";
 import login from "../login";
@@ -20,6 +21,10 @@ if (!email || !password) {
 (async () => {
   const browser = await puppeteer.launch({
     headless: false,
+    // Use a persistent, non-incognito browser profile dedicated to this bot.
+    // This keeps the LinkedIn session/cookies between runs without sharing
+    // the user's everyday Chrome profile.
+    userDataDir: path.resolve(process.cwd(), "linkedin-profile"),
     dumpio: true,
     ignoreHTTPSErrors: false,
     args: ["--disable-setuid-sandbox", "--no-sandbox"]
@@ -31,10 +36,9 @@ if (!email || !password) {
   });
 
   try {
-    const browserAny = browser as any;
-    const context = browserAny.createBrowserContext
-      ? await browserAny.createBrowserContext()
-      : await browserAny.createIncognitoBrowserContext();
+    // Use the default persistent browser context. Do not create an incognito
+    // context, so the dedicated profile remains logged in between runs.
+    const context = browser.defaultBrowserContext();
     const listingPage = await context.newPage();
 
     await login({ page: listingPage, email, password });
