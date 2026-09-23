@@ -16,8 +16,6 @@ async function isAuthenticated(page: Page): Promise<boolean> {
     return true;
   }
 
-  // LinkedIn can leave the URL at /login while an already-authenticated
-  // session is displaying the feed. Check for stable authenticated UI too.
   const authenticatedUi = await page.$(
     'nav[aria-label="Primary Navigation"], a[href*="/feed/"], a[href*="/mynetwork/"], a[href*="/messaging/"], a[href*="/notifications/"]'
   );
@@ -35,16 +33,12 @@ async function waitForHumanChallenge(page: Page): Promise<void> {
 }
 
 async function replaceFieldValue(page: Page, selector: string, value: string): Promise<void> {
-  await page.click(selector, { clickCount: 3 });
-  await page.keyboard.down('Control');
-  await page.keyboard.press('A');
-  await page.keyboard.up('Control');
-  await page.type(selector, value);
+  const field = await page.waitForSelector(selector, { visible: true, timeout: 15000 });
+  await field.click({ clickCount: 3 });
+  await field.type(value);
 }
 
 async function login({ page, email, password }: Params): Promise<void> {
-  // Go to the feed first. If the local browser session is already
-  // authenticated, this avoids interacting with the login form entirely.
   await page.goto('https://www.linkedin.com/feed/', {
     waitUntil: 'domcontentloaded',
     timeout: 60000
@@ -57,7 +51,6 @@ async function login({ page, email, password }: Params): Promise<void> {
     return;
   }
 
-  // An unauthenticated session normally redirects to /login.
   await page.goto('https://www.linkedin.com/login', {
     waitUntil: 'domcontentloaded',
     timeout: 60000
@@ -70,25 +63,22 @@ async function login({ page, email, password }: Params): Promise<void> {
     return;
   }
 
-  const emailSelector = selectors.emailInput;
-  const passwordSelector = selectors.passwordInput;
-
-  const emailField = await page.$(emailSelector);
-  const passwordField = await page.$(passwordSelector);
+  const emailField = await page.$(selectors.emailInput);
+  const passwordField = await page.$(selectors.passwordInput);
 
   if (!emailField || !passwordField) {
     console.log('\nLinkedIn did not expose the expected login fields.');
     console.log('Use the visible browser window to complete sign-in manually.');
     await ask('Press Enter after LinkedIn sign-in is complete');
+
+    if (await isAuthenticated(page)) {
+      console.log('Manual LinkedIn sign-in detected; continuing.');
+      return;
+    }
   }
 
-  if (await isAuthenticated(page)) {
-    console.log('Manual LinkedIn sign-in detected; continuing.');
-    return;
-  }
-
-  const loginEmailField = await page.$(emailSelector);
-  const loginPasswordField = await page.$(passwordSelector);
+  const loginEmailField = await page.$(selectors.emailInput);
+  const loginPasswordField = await page.$(selectors.passwordInput);
 
   if (!loginEmailField || !loginPasswordField) {
     throw new Error(
@@ -96,8 +86,8 @@ async function login({ page, email, password }: Params): Promise<void> {
     );
   }
 
-  await replaceFieldValue(page, emailSelector, email);
-  await replaceFieldValue(page, passwordSelector, password);
+  await replaceFieldValue(page, selectors.emailInput, email);
+  await replaceFieldValue(page, selectors.passwordInput, password);
 
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => undefined),
