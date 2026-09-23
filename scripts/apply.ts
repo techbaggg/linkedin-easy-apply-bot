@@ -1,110 +1,99 @@
-import puppeteer, { Page } from "puppeteer";
-import config from "../config";
+import puppeteer from "puppeteer";
+import path from "path";
 
-import ask from "../utils/ask";
+import config from "../sample_config";
 import login from "../login";
 import apply, { ApplicationFormData } from "../apply";
 import fetchJobLinksUser from "../fetch/fetchJobLinksUser";
 
-interface AppState {
-  paused: boolean;
-}
-
 const wait = (time: number) => new Promise((resolve) => setTimeout(resolve, time));
 
-const state: AppState = {
-  paused: false,
-};
+const getConfigValue = (name: string, fallback: string): string =>
+  process.env[name] ?? fallback;
 
-const askForPauseInput = async () => {
-  await ask("press enter to pause the program");
+const email = getConfigValue("LINKEDIN_EMAIL", config.LINKEDIN_EMAIL);
+const password = getConfigValue("LINKEDIN_PASSWORD", config.LINKEDIN_PASSWORD);
 
-  state.paused = true;
-
-  await ask("finishing job application...\n");
-
-  state.paused = false;
-  console.log("unpaused");
-
-  askForPauseInput();
-};
+if (!email || !password) {
+  throw new Error("Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD as environment variables.");
+}
 
 (async () => {
   const browser = await puppeteer.launch({
     headless: false,
-    ignoreHTTPSErrors: true,
-    args: ["--disable-setuid-sandbox", "--no-sandbox",]
-  });
-  const context = await browser.createIncognitoBrowserContext();
-  const listingPage = await context.newPage();
-
-  const pages = await browser.pages();
-
-  await pages[0].close();
-
-  await login({
-    page: listingPage,
-    email: config.LINKEDIN_EMAIL,
-    password: config.LINKEDIN_PASSWORD
+    // Use a persistent, non-incognito browser profile dedicated to this bot.
+    // This keeps the LinkedIn session/cookies between runs without sharing
+    // the user's everyday Chrome profile.
+    userDataDir: path.resolve(process.cwd(), "linkedin-profile"),
+    dumpio: true,
+    ignoreHTTPSErrors: false,
+    args: ["--disable-setuid-sandbox", "--no-sandbox"]
   });
 
-  askForPauseInput();
-
-  const linkGenerator = fetchJobLinksUser({
-    page: listingPage,
-    location: config.LOCATION,
-    keywords: config.KEYWORDS,
-    workplace: {
-      remote: config.WORKPLACE.REMOTE,
-      onSite: config.WORKPLACE.ON_SITE,
-      hybrid: config.WORKPLACE.HYBRID,
-    },
-    jobTitle: config.JOB_TITLE,
-    jobDescription: config.JOB_DESCRIPTION,
-    jobDescriptionLanguages: config.JOB_DESCRIPTION_LANGUAGES
+  browser.on("disconnected", () => {
+    console.error("\nPuppeteer disconnected from Chromium.");
+    console.error("The browser process may have closed or crashed. Review the Chromium diagnostics above.");
   });
 
-  let applicationPage: Page | null = null;
+  try {
+    // Use the default persistent browser context. Do not create an incognito
+    // context, so the dedicated profile remains logged in between runs.
+    const context = browser.defaultBrowserContext();
+    const listingPage = await context.newPage();
 
-  for await (const [link, title, companyName] of linkGenerator) {
-    if (!applicationPage || process.env.SINGLE_PAGE !== "true")
-      applicationPage = await context.newPage();
+    await login({ page: listingPage, email, password });
 
-    await applicationPage.bringToFront();
+    const linkGenerator = fetchJobLinksUser({
+      page: listingPage,
+      location: config.LOCATION,
+      keywords: config.KEYWORDS,
+      workplace: {
+        remote: config.WORKPLACE.REMOTE,
+        onSite: config.WORKPLACE.ON_SITE,
+        hybrid: config.WORKPLACE.HYBRID,
+      },
+      jobTitle: config.JOB_TITLE,
+      jobDescription: config.JOB_DESCRIPTION,
+      jobDescriptionLanguages: config.JOB_DESCRIPTION_LANGUAGES
+    });
 
-    try {
-      const formData: ApplicationFormData = {
-        phone: config.PHONE,
-        cvPath: config.CV_PATH,
-        homeCity: config.HOME_CITY,
-        coverLetterPath: config.COVER_LETTER_PATH,
-        yearsOfExperience: config.YEARS_OF_EXPERIENCE,
-        languageProficiency: config.LANGUAGE_PROFICIENCY,
-        requiresVisaSponsorship: config.REQUIRES_VISA_SPONSORSHIP,
-        booleans: config.BOOLEANS,
-        textFields: config.TEXT_FIELDS,
-        multipleChoiceFields: config.MULTIPLE_CHOICE_FIELDS,
-      };
+    let applicationPage = await context.newPage();
 
-      await apply({
-        page: applicationPage,
-        link,
-        formData,
-        shouldSubmit: process.argv[2] === "SUBMIT",
-      });
+    for await (const [link, title, companyName] of linkGenerator) {
+      if (process.env.SINGLE_PAGE !== "true") {
+        applicationPage = await context.newPage();
+      }
 
-      console.log(`Applied to ${title} at ${companyName}`);
-    } catch {
-      console.log(`Error applying to ${title} at ${companyName}`);
+      await applicationPage.bringToFront();
+
+      try {
+        const formData: ApplicationFormData = {
+          phone: config.PHONE,
+          cvPath: config.CV_PATH,
+          homeCity: config.HOME_CITY,
+          coverLetterPath: config.COVER_LETTER_PATH,
+          yearsOfExperience: config.YEARS_OF_EXPERIENCE,
+          languageProficiency: config.LANGUAGE_PROFICIENCY,
+          requiresVisaSponsorship: config.REQUIRES_VISA_SPONSORSHIP,
+          booleans: config.BOOLEANS,
+          textFields: config.TEXT_FIELDS,
+          multipleChoiceFields: config.MULTIPLE_CHOICE_FIELDS,
+        };
+
+        await apply({ page: applicationPage, link, formData });
+        console.log(`Prepared: ${title} at ${companyName}`);
+      } catch (error) {
+        console.log(`Could not prepare ${title} at ${companyName}:`, error);
+      }
+
+      await listingPage.bringToFront();
+      await wait(1500);
     }
-
-    await listingPage.bringToFront();
-
-    for(let shouldLog = true; state.paused; shouldLog = false){
-	shouldLog && console.log("\nProgram paused, press enter to continue the program");
-	await wait(2000);
+  } finally {
+    if (browser.isConnected()) {
+      console.log("\nBrowser left open. Close it manually when finished.");
+    } else {
+      console.log("\nBrowser disconnected; see Chromium diagnostics above.");
     }
   }
-
-  // await browser.close();
 })();
