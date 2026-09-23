@@ -20,8 +20,14 @@ if (!email || !password) {
 (async () => {
   const browser = await puppeteer.launch({
     headless: false,
+    dumpio: true,
     ignoreHTTPSErrors: false,
     args: ["--disable-setuid-sandbox", "--no-sandbox"]
+  });
+
+  browser.on("disconnected", () => {
+    console.error("\nPuppeteer disconnected from Chromium.");
+    console.error("The browser process may have closed or crashed. Review the Chromium diagnostics above.");
   });
 
   try {
@@ -80,6 +86,10 @@ if (!email || !password) {
       await wait(1500);
     }
   } finally {
-    console.log("\nBrowser left open. Close it manually when finished.");
+    if (browser.connected()) {
+      console.log("\nBrowser left open. Close it manually when finished.");
+    } else {
+      console.log("\nBrowser disconnected; see Chromium diagnostics above.");
+    }
   }
 })();
