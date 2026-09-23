@@ -12,17 +12,22 @@ async function getJobSearchMetadata({ page, location, keywords }: { page: Page, 
   await page.goto('https://linkedin.com/jobs', { waitUntil: "load" });
   console.log(`Jobs page loaded: ${page.url()}`);
 
+  // Allow LinkedIn's client-side Jobs UI to render before inspecting the DOM.
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
   const inputsInfo = await page.$$eval('input', inputs =>
     inputs.map(i => ({
       id: i.id,
       ariaLabel: i.getAttribute('aria-label'),
       placeholder: (i as HTMLInputElement).placeholder,
       name: i.name,
-      type: i.type,
-      className: i.className
+      type: i.type
     }))
   );
-  console.log('Inputs on page:', JSON.stringify(inputsInfo, null, 2));
+  console.log('Inputs on page (after 5s):', JSON.stringify(inputsInfo, null, 2));
+
+  await page.screenshot({ path: 'debug-jobs-page.png', fullPage: true });
+  console.log('Screenshot saved to debug-jobs-page.png');
 
   await page.waitForSelector(selectors.keywordInput, { visible: true, timeout: 15000 });
   await page.type(selectors.keywordInput, keywords);
