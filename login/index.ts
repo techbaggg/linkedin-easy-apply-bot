@@ -9,6 +9,11 @@ interface Params {
   password: string;
 }
 
+async function isAuthenticated(page: Page): Promise<boolean> {
+  const url = page.url();
+  return /linkedin\.com\/(feed|jobs|mynetwork|messaging|notifications|in)\b/i.test(url);
+}
+
 async function waitForHumanChallenge(page: Page): Promise<void> {
   const challenge = await page.$(selectors.captcha) || await page.$(selectors.challenge);
   if (!challenge) return;
@@ -35,28 +40,34 @@ async function login({ page, email, password }: Params): Promise<void> {
   const currentUrl = page.url();
   console.log(`LinkedIn login page loaded: ${currentUrl}`);
 
-  if (!/linkedin\.com\/login/i.test(currentUrl)) {
-    console.log('An existing LinkedIn session is already active.');
+  if (await isAuthenticated(page)) {
+    console.log('Existing LinkedIn session detected; continuing.');
     return;
   }
 
   const emailSelector = selectors.emailInput;
   const passwordSelector = selectors.passwordInput;
 
-  try {
-    await page.waitForSelector(emailSelector, { visible: true, timeout: 15000 });
-  } catch {
-    console.log('\nThe expected LinkedIn login fields were not found.');
-    console.log('Inspect the open browser window. If LinkedIn is showing a verification or alternate login screen, complete it manually.');
-    await ask('Press Enter after the LinkedIn page is ready for login');
-  }
-
   const emailField = await page.$(emailSelector);
   const passwordField = await page.$(passwordSelector);
 
   if (!emailField || !passwordField) {
+    console.log('\nLinkedIn did not expose the expected login fields.');
+    console.log('Use the visible browser window to complete sign-in manually.');
+    await ask('Press Enter after LinkedIn sign-in is complete');
+  }
+
+  if (await isAuthenticated(page)) {
+    console.log('Manual LinkedIn sign-in detected; continuing.');
+    return;
+  }
+
+  const loginEmailField = await page.$(emailSelector);
+  const loginPasswordField = await page.$(passwordSelector);
+
+  if (!loginEmailField || !loginPasswordField) {
     throw new Error(
-      'LinkedIn login fields are still unavailable. The page may be showing a sign-in variant or verification screen.'
+      'LinkedIn login fields are unavailable and the session is not authenticated. Check the visible browser window.'
     );
   }
 
@@ -70,11 +81,16 @@ async function login({ page, email, password }: Params): Promise<void> {
 
   await waitForHumanChallenge(page);
 
+  if (await isAuthenticated(page)) {
+    console.log('LinkedIn session ready.');
+    return;
+  }
+
   if (/\/login|\/checkpoint|\/challenge/i.test(page.url())) {
     throw new Error('LinkedIn login did not complete. Finish the verification manually and restart.');
   }
 
-  console.log('LinkedIn session ready.');
+  throw new Error(`LinkedIn authentication could not be confirmed at ${page.url()}`);
 }
 
 export default login;
