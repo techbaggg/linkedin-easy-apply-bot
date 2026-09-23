@@ -1,4 +1,4 @@
-import { Page } from 'puppeteer';
+import { Page, ElementHandle } from 'puppeteer';
 
 import ask from '../utils/ask';
 import selectors from '../selectors';
@@ -32,10 +32,33 @@ async function waitForHumanChallenge(page: Page): Promise<void> {
   await ask('Press Enter after the challenge is complete');
 }
 
+async function findUsableField(page: Page, selector: string): Promise<ElementHandle<Element>> {
+  const fields = await page.$$(selector);
+
+  for (const field of fields) {
+    const visible = await field.isIntersectingViewport().catch(() => false);
+    const box = await field.boundingBox().catch(() => null);
+
+    if (visible && box && box.width > 0 && box.height > 0) {
+      return field;
+    }
+  }
+
+  throw new Error(`No visible, usable input found for selector: ${selector}`);
+}
+
 async function replaceFieldValue(page: Page, selector: string, value: string): Promise<void> {
-  const field = await page.waitForSelector(selector, { visible: true, timeout: 15000 });
-  await field.click({ clickCount: 3 });
-  await field.type(value);
+  const field = await findUsableField(page, selector);
+
+  await field.evaluate((element) => {
+    const input = element as HTMLInputElement;
+    input.scrollIntoView({ block: 'center', inline: 'nearest' });
+    input.focus();
+    input.select();
+  });
+
+  await page.keyboard.press('Backspace');
+  await field.type(value, { delay: 20 });
 }
 
 async function login({ page, email, password }: Params): Promise<void> {
@@ -63,10 +86,10 @@ async function login({ page, email, password }: Params): Promise<void> {
     return;
   }
 
-  const emailField = await page.$(selectors.emailInput);
-  const passwordField = await page.$(selectors.passwordInput);
-
-  if (!emailField || !passwordField) {
+  try {
+    await page.waitForSelector(selectors.emailInput, { visible: true, timeout: 15000 });
+    await page.waitForSelector(selectors.passwordInput, { visible: true, timeout: 15000 });
+  } catch {
     console.log('\nLinkedIn did not expose the expected login fields.');
     console.log('Use the visible browser window to complete sign-in manually.');
     await ask('Press Enter after LinkedIn sign-in is complete');
@@ -75,15 +98,6 @@ async function login({ page, email, password }: Params): Promise<void> {
       console.log('Manual LinkedIn sign-in detected; continuing.');
       return;
     }
-  }
-
-  const loginEmailField = await page.$(selectors.emailInput);
-  const loginPasswordField = await page.$(selectors.passwordInput);
-
-  if (!loginEmailField || !loginPasswordField) {
-    throw new Error(
-      'LinkedIn login fields are unavailable and the session is not authenticated. Check the visible browser window.'
-    );
   }
 
   await replaceFieldValue(page, selectors.emailInput, email);
