@@ -10,13 +10,25 @@ const languageDetector = new LanguageDetect();
 
 async function getJobSearchMetadata({ page, location, keywords }: { page: Page, location: string, keywords: string }) {
   await page.goto('https://linkedin.com/jobs', { waitUntil: "load" });
+  console.log(`Jobs page loaded: ${page.url()}`);
 
+  await page.waitForSelector(selectors.keywordInput, { visible: true, timeout: 15000 });
   await page.type(selectors.keywordInput, keywords);
-  await page.waitForSelector(selectors.locationInput, { visible: true });
+  console.log('Keyword field found and filled.');
+
+  await page.waitForSelector(selectors.locationInput, { visible: true, timeout: 15000 });
   await page.$eval(selectors.locationInput, (el, location) => (el as HTMLInputElement).value = location, location);
   await page.type(selectors.locationInput, ' ');
-  await page.$eval('button.jobs-search-box__submit-button', (el) => el.click());
-  await page.waitForFunction(() => new URLSearchParams(document.location.search).has('geoId'));
+  console.log('Location field found and filled.');
+
+  await page.waitForSelector(selectors.searchSubmit, { visible: true, timeout: 15000 });
+  await page.$eval(selectors.searchSubmit, (el) => (el as HTMLButtonElement).click());
+
+  await page.waitForFunction(
+    () => new URLSearchParams(document.location.search).has('geoId'),
+    { timeout: 15000 }
+  );
+  console.log(`Search results URL: ${page.url()}`);
 
   const geoId = await page.evaluate(() => new URLSearchParams(document.location.search).get('geoId'));
 
