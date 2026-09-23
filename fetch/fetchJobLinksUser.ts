@@ -12,6 +12,18 @@ async function getJobSearchMetadata({ page, location, keywords }: { page: Page, 
   await page.goto('https://linkedin.com/jobs', { waitUntil: "load" });
   console.log(`Jobs page loaded: ${page.url()}`);
 
+  const inputsInfo = await page.$$eval('input', inputs =>
+    inputs.map(i => ({
+      id: i.id,
+      ariaLabel: i.getAttribute('aria-label'),
+      placeholder: (i as HTMLInputElement).placeholder,
+      name: i.name,
+      type: i.type,
+      className: i.className
+    }))
+  );
+  console.log('Inputs on page:', JSON.stringify(inputsInfo, null, 2));
+
   await page.waitForSelector(selectors.keywordInput, { visible: true, timeout: 15000 });
   await page.type(selectors.keywordInput, keywords);
   console.log('Keyword field found and filled.');
