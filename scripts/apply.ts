@@ -1,5 +1,4 @@
 import puppeteer from "puppeteer";
-import { Page } from "puppeteer";
 
 import config from "../sample_config";
 import login from "../login";
@@ -48,12 +47,10 @@ if (!email || !password) {
       jobDescriptionLanguages: config.JOB_DESCRIPTION_LANGUAGES
     });
 
-    let applicationPage: Page;
+    let applicationPage = await context.newPage();
 
     for await (const [link, title, companyName] of linkGenerator) {
-      if (process.env.SINGLE_PAGE === "true" && applicationPage) {
-        // Reuse the existing application page when explicitly requested.
-      } else {
+      if (process.env.SINGLE_PAGE !== "true") {
         applicationPage = await context.newPage();
       }
 
