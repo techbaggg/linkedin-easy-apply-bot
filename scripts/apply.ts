@@ -1,8 +1,7 @@
 import puppeteer from "puppeteer";
 import { Page } from "puppeteer";
-import config from "../config";
 
-import ask from "../utils/ask";
+import config from "../sample_config";
 import login from "../login";
 import apply, { ApplicationFormData } from "../apply";
 import fetchJobLinksUser from "../fetch/fetchJobLinksUser";
@@ -16,7 +15,7 @@ const email = getConfigValue("LINKEDIN_EMAIL", config.LINKEDIN_EMAIL);
 const password = getConfigValue("LINKEDIN_PASSWORD", config.LINKEDIN_PASSWORD);
 
 if (!email || !password) {
-  throw new Error("Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD as environment variables or in config.ts.");
+  throw new Error("Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD as environment variables.");
 }
 
 (async () => {
@@ -49,14 +48,15 @@ if (!email || !password) {
       jobDescriptionLanguages: config.JOB_DESCRIPTION_LANGUAGES
     });
 
-    let applicationPage: Page | null = null;
+    let applicationPage: Page | undefined;
 
     for await (const [link, title, companyName] of linkGenerator) {
       if (!applicationPage || process.env.SINGLE_PAGE !== "true") {
         applicationPage = await context.newPage();
       }
 
-      await applicationPage.bringToFront();
+      const currentApplicationPage = applicationPage;
+      await currentApplicationPage.bringToFront();
 
       try {
         const formData: ApplicationFormData = {
@@ -72,7 +72,7 @@ if (!email || !password) {
           multipleChoiceFields: config.MULTIPLE_CHOICE_FIELDS,
         };
 
-        await apply({ page: applicationPage, link, formData });
+        await apply({ page: currentApplicationPage, link, formData });
         console.log(`Prepared: ${title} at ${companyName}`);
       } catch (error) {
         console.log(`Could not prepare ${title} at ${companyName}:`, error);
@@ -82,7 +82,6 @@ if (!email || !password) {
       await wait(1500);
     }
   } finally {
-    // Keep the browser open for manual review and troubleshooting.
     console.log("\nBrowser left open. Close it manually when finished.");
   }
 })();
