@@ -33,20 +33,35 @@ async function login({ page, email, password }: Params): Promise<void> {
   });
 
   const currentUrl = page.url();
+  console.log(`LinkedIn login page loaded: ${currentUrl}`);
+
   if (!/linkedin\.com\/login/i.test(currentUrl)) {
     console.log('An existing LinkedIn session is already active.');
     return;
   }
 
-  const emailField = await page.waitForSelector(selectors.emailInput, { visible: true, timeout: 15000 });
-  const passwordField = await page.waitForSelector(selectors.passwordInput, { visible: true, timeout: 15000 });
+  const emailSelector = selectors.emailInput;
+  const passwordSelector = selectors.passwordInput;
 
-  if (!emailField || !passwordField) {
-    throw new Error('LinkedIn login fields were not found.');
+  try {
+    await page.waitForSelector(emailSelector, { visible: true, timeout: 15000 });
+  } catch {
+    console.log('\nThe expected LinkedIn login fields were not found.');
+    console.log('Inspect the open browser window. If LinkedIn is showing a verification or alternate login screen, complete it manually.');
+    await ask('Press Enter after the LinkedIn page is ready for login');
   }
 
-  await replaceFieldValue(page, selectors.emailInput, email);
-  await replaceFieldValue(page, selectors.passwordInput, password);
+  const emailField = await page.$(emailSelector);
+  const passwordField = await page.$(passwordSelector);
+
+  if (!emailField || !passwordField) {
+    throw new Error(
+      'LinkedIn login fields are still unavailable. The page may be showing a sign-in variant or verification screen.'
+    );
+  }
+
+  await replaceFieldValue(page, emailSelector, email);
+  await replaceFieldValue(page, passwordSelector, password);
 
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => undefined),
