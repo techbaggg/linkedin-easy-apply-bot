@@ -18,6 +18,14 @@ async function waitForHumanChallenge(page: Page): Promise<void> {
   await ask('Press Enter after the challenge is complete');
 }
 
+async function replaceFieldValue(page: Page, selector: string, value: string): Promise<void> {
+  await page.click(selector, { clickCount: 3 });
+  await page.keyboard.down('Control');
+  await page.keyboard.press('A');
+  await page.keyboard.up('Control');
+  await page.type(selector, value);
+}
+
 async function login({ page, email, password }: Params): Promise<void> {
   await page.goto('https://www.linkedin.com/login', {
     waitUntil: 'domcontentloaded',
@@ -37,13 +45,8 @@ async function login({ page, email, password }: Params): Promise<void> {
     throw new Error('LinkedIn login fields were not found.');
   }
 
-  await page.click(selectors.emailInput);
-  await page.keyboard.press('Control+A');
-  await page.type(selectors.emailInput, email);
-
-  await page.click(selectors.passwordInput);
-  await page.keyboard.press('Control+A');
-  await page.type(selectors.passwordInput, password);
+  await replaceFieldValue(page, selectors.emailInput, email);
+  await replaceFieldValue(page, selectors.passwordInput, password);
 
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => undefined),
