@@ -1,4 +1,4 @@
-import { ElementHandle, Page } from 'puppeteer';
+import { Page } from 'puppeteer';
 import LanguageDetect from 'languagedetect';
 
 import buildUrl from '../utils/buildUrl';
@@ -6,57 +6,8 @@ import wait from '../utils/wait';
 import selectors from '../selectors';
 
 const MAX_PAGE_SIZE = 7;
+const MAX_SEARCH_PAGES = 100;
 const languageDetector = new LanguageDetect();
-
-async function getJobSearchMetadata({ page, location, keywords }: { page: Page, location: string, keywords: string }) {
-  await page.goto('https://linkedin.com/jobs', { waitUntil: "load" });
-  console.log(`Jobs page loaded: ${page.url()}`);
-
-  // Allow LinkedIn's client-side Jobs UI to render before inspecting the DOM.
-  await new Promise(resolve => setTimeout(resolve, 5000));
-
-  const inputsInfo = await page.$$eval('input', inputs =>
-    inputs.map(i => ({
-      id: i.id,
-      ariaLabel: i.getAttribute('aria-label'),
-      placeholder: (i as HTMLInputElement).placeholder,
-      name: i.name,
-      type: i.type
-    }))
-  );
-  console.log('Inputs on page (after 5s):', JSON.stringify(inputsInfo, null, 2));
-
-  await page.screenshot({ path: 'debug-jobs-page.png', fullPage: true });
-  console.log('Screenshot saved to debug-jobs-page.png');
-
-  await page.waitForSelector(selectors.keywordInput, { visible: true, timeout: 15000 });
-  await page.type(selectors.keywordInput, keywords);
-  console.log('Keyword field found and filled.');
-
-  await page.waitForSelector(selectors.locationInput, { visible: true, timeout: 15000 });
-  await page.$eval(selectors.locationInput, (el, location) => (el as HTMLInputElement).value = location, location);
-  await page.type(selectors.locationInput, ' ');
-  console.log('Location field found and filled.');
-
-  await page.waitForSelector(selectors.searchSubmit, { visible: true, timeout: 15000 });
-  await page.$eval(selectors.searchSubmit, (el) => (el as HTMLButtonElement).click());
-
-  await page.waitForFunction(
-    () => new URLSearchParams(document.location.search).has('geoId'),
-    { timeout: 15000 }
-  );
-  console.log(`Search results URL: ${page.url()}`);
-
-  const geoId = await page.evaluate(() => new URLSearchParams(document.location.search).get('geoId'));
-
-  const numJobsHandle = await page.waitForSelector(selectors.searchResultListText, { timeout: 5000 }) as ElementHandle<HTMLElement>;
-  const numAvailableJobs = await numJobsHandle.evaluate((el) => parseInt((el as HTMLElement).innerText.replace(',', '')));
-
-  return {
-    geoId,
-    numAvailableJobs
-  };
-};
 
 interface PARAMS {
   page: Page,
@@ -69,77 +20,133 @@ interface PARAMS {
 };
 
 /**
- * Fetches job links as a user (logged in)
+ * Fetches Easy Apply job links as a logged-in user.
+ *
+ * LinkedIn's current /jobs/ home page can present an AI/recommendations
+ * landing page without the legacy keyword/location search form. To avoid
+ * depending on that UI, navigate directly to the jobs/search endpoint.
  */
-async function* fetchJobLinksUser({ page, location, keywords, workplace: { remote, onSite, hybrid }, jobTitle, jobDescription, jobDescriptionLanguages }: PARAMS): AsyncGenerator<[string, string, string]> {
-  let numSeenJobs = 0;
-  let numMatchingJobs = 0;
-  const fWt = [onSite, remote, hybrid].reduce((acc, c, i) => c ? [...acc, i + 1] : acc, [] as number[]).join(',');
-
-  const { geoId, numAvailableJobs } = await getJobSearchMetadata({ page, location, keywords });
+async function* fetchJobLinksUser({
+  page,
+  location,
+  keywords,
+  workplace: { remote, onSite, hybrid },
+  jobTitle,
+  jobDescription,
+  jobDescriptionLanguages
+}: PARAMS): AsyncGenerator<[string, string, string]> {
+  const fWt = [onSite, remote, hybrid]
+    .reduce((acc, enabled, index) => enabled ? [...acc, index + 1] : acc, [] as number[])
+    .join(',');
 
   const searchParams: { [key: string]: string } = {
     keywords,
     location,
-    start: numSeenJobs.toString(),
+    start: '0',
     f_WT: fWt,
     f_AL: 'true'
   };
 
-  if(geoId) {
-    searchParams.geoId = geoId.toString();
-  }
-
-  const url = buildUrl('https://www.linkedin.com/jobs/search', searchParams);
+  const searchUrl = buildUrl('https://www.linkedin.com/jobs/search', searchParams);
 
   const jobTitleRegExp = new RegExp(jobTitle, 'i');
   const jobDescriptionRegExp = new RegExp(jobDescription, 'i');
 
-  while (numSeenJobs < numAvailableJobs) {
-    url.searchParams.set('start', numSeenJobs.toString());
+  let numSeenJobs = 0;
 
-    await page.goto(url.toString(), { waitUntil: "load" });
+  for (let pageNumber = 0; pageNumber < MAX_SEARCH_PAGES; pageNumber++) {
+    searchUrl.searchParams.set('start', numSeenJobs.toString());
 
-    await page.waitForSelector(`${selectors.searchResultListItem}:nth-child(${Math.min(MAX_PAGE_SIZE, numAvailableJobs - numSeenJobs)})`, { timeout: 5000 });
+    await page.goto(searchUrl.toString(), { waitUntil: 'load' });
+    console.log(`Job search page loaded: ${page.url()}`);
+
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     const jobListings = await page.$$(selectors.searchResultListItem);
 
-    for (let i = 0; i < Math.min(jobListings.length, MAX_PAGE_SIZE); i++) {
+    if (jobListings.length === 0) {
+      console.log('No job listings found; ending job search.');
+      break;
+    }
+
+    const batchSize = Math.min(jobListings.length, MAX_PAGE_SIZE);
+    console.log(`Found ${jobListings.length} job listings; processing ${batchSize}.`);
+
+    const candidates: Array<[string, string, string]> = [];
+
+    for (let i = 0; i < batchSize; i++) {
       try {
-        const [link, title] = await page.$eval(`${selectors.searchResultListItem}:nth-child(${i + 1}) ${selectors.searchResultListItemLink}`, (el) => {
-          const linkEl = el as HTMLLinkElement;
+        const candidate = await page.$eval(
+          `${selectors.searchResultListItem}:nth-child(${i + 1})`,
+          (el) => {
+            const linkEl = el.querySelector<HTMLAnchorElement>(`a.job-card-list__title, a[href*="/jobs/view/"]`);
+            const titleEl = linkEl || el.querySelector<HTMLElement>('a');
+            const companyEl = el.querySelector<HTMLElement>(
+              'div.job-card-container__company-name, a.job-card-container__company-name, .artdeco-entity-lockup__subtitle'
+            );
 
-          linkEl.click();
+            return [
+              linkEl?.href?.trim() || '',
+              titleEl?.innerText?.trim() || '',
+              companyEl?.innerText?.trim() || 'Unknown'
+            ];
+          }
+        );
 
-          return [linkEl.href.trim(), linkEl.innerText.trim()];
-        });
-
-        await page.waitForFunction(async (selectors) => {
-          const hasLoadedDescription = !!document.querySelector<HTMLElement>(selectors.jobDescription)?.innerText.trim();
-          const hasLoadedStatus = !!(document.querySelector(selectors.easyApplyButtonEnabled) || document.querySelector(selectors.appliedToJobFeedback));
-
-          return hasLoadedStatus && hasLoadedDescription;
-        }, {}, selectors);
-
-        const companyName = await page.$eval(`${selectors.searchResultListItem}:nth-child(${i + 1}) ${selectors.searchResultListItemCompanyName}`, el => (el as HTMLElement).innerText).catch(() => 'Unknown');;
-        const jobDescription = await page.$eval(selectors.jobDescription, el => (el as HTMLElement).innerText);
-        const canApply = !!(await page.$(selectors.easyApplyButtonEnabled));
-        const jobDescriptionLanguage = languageDetector.detect(jobDescription, 1)[0][0];
-        const matchesLanguage = jobDescriptionLanguages.includes("any") || jobDescriptionLanguages.includes(jobDescriptionLanguage);
-
-        if (canApply && jobTitleRegExp.test(title) && jobDescriptionRegExp.test(jobDescription) && matchesLanguage) {
-          numMatchingJobs++;
-
-          yield [link, title, companyName];
+        if (candidate[0] && candidate[1]) {
+          candidates.push(candidate);
         }
-      } catch (e) {
-        console.log(e);
+      } catch (error) {
+        console.log('Could not read job listing:', error);
       }
     }
 
-    await wait(2000);
+    for (const [link, title, companyName] of candidates) {
+      try {
+        await page.goto(link, { waitUntil: 'load' });
 
-    numSeenJobs += jobListings.length;
+        await page.waitForFunction(
+          (selectors) => {
+            const hasLoadedDescription = !!document.querySelector<HTMLElement>(selectors.jobDescription)?.innerText.trim();
+            const hasLoadedStatus = !!(
+              document.querySelector(selectors.easyApplyButtonEnabled) ||
+              document.querySelector(selectors.appliedToJobFeedback)
+            );
+
+            return hasLoadedStatus && hasLoadedDescription;
+          },
+          { timeout: 10000 },
+          selectors
+        );
+
+        const descriptionEl = await page.$(selectors.jobDescription);
+        if (!descriptionEl) {
+          continue;
+        }
+
+        const description = await descriptionEl.evaluate(el => (el as HTMLElement).innerText);
+        const canApply = !!(await page.$(selectors.easyApplyButtonEnabled));
+        const detected = languageDetector.detect(description, 1);
+        const jobDescriptionLanguage = detected.length > 0 ? detected[0][0] : '';
+        const matchesLanguage =
+          jobDescriptionLanguages.includes('any') ||
+          jobDescriptionLanguages.includes(jobDescriptionLanguage);
+
+        if (
+          canApply &&
+          jobTitleRegExp.test(title) &&
+          jobDescriptionRegExp.test(description) &&
+          matchesLanguage
+        ) {
+          yield [link, title, companyName];
+        }
+      } catch (error) {
+        console.log(`Could not inspect ${title} at ${companyName}:`, error);
+      }
+    }
+
+    numSeenJobs += batchSize;
+    await wait(1500);
   }
 }
 
