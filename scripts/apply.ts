@@ -86,7 +86,7 @@ if (!email || !password) {
       await wait(1500);
     }
   } finally {
-    if (browser.connected()) {
+    if (browser.isConnected()) {
       console.log("\nBrowser left open. Close it manually when finished.");
     } else {
       console.log("\nBrowser disconnected; see Chromium diagnostics above.");
