@@ -16,7 +16,7 @@ export default {
   },
 
   // Match a wide range of roles supported by the resume.
-  JOB_TITLE: "(AI|artificial intelligence|LLM|machine learning|AI evaluator|AI trainer|AI analyst|AI data|data annotat|data specialist|data analyst|data quality|prompt|language|linguist|translator|translation|MTPE|localization|transcription|transcriptionist|speech|audio|content|quality|QA|quality analyst|quality auditor|software tester|test|coding|code|developer|technical|research|patent|search|ads|annotation|reviewer|content reviewer|technical writer).*(evaluator|trainer|analyst|specialist|annotator|engineer|developer|reviewer|tester|tester|qa|quality|translator|translation|linguist|localization|transcription|transcriptionist|researcher|research|writer|auditor|associate|contributor|rater|expert|operations|consultant|freelance|contractor|manager|coordinator)?",
+  JOB_TITLE: ".*",
   JOB_DESCRIPTION: "^((?!(senior executive only|commission only|unpaid internship)).*)$",
   JOB_DESCRIPTION_LANGUAGES: ["any"],
 
