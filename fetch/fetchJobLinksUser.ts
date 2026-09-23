@@ -89,7 +89,7 @@ async function* fetchJobLinksUser({
               linkEl?.href?.trim() || '',
               titleEl?.innerText?.trim() || '',
               companyEl?.innerText?.trim() || 'Unknown'
-            ];
+            ] as [string, string, string];
           }
         );
 
