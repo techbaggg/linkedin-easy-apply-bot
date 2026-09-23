@@ -9,31 +9,54 @@ interface Params {
   password: string;
 }
 
+async function waitForHumanChallenge(page: Page): Promise<void> {
+  const challenge = await page.$(selectors.captcha) || await page.$(selectors.challenge);
+  if (!challenge) return;
+
+  console.log('\nLinkedIn requires a verification/challenge step.');
+  console.log('Complete it manually in the browser window. This program will not bypass it.');
+  await ask('Press Enter after the challenge is complete');
+}
+
 async function login({ page, email, password }: Params): Promise<void> {
-  // Navigate to LinkedIn
-  await page.goto('https://www.linkedin.com/login', { waitUntil: 'load' });
+  await page.goto('https://www.linkedin.com/login', {
+    waitUntil: 'domcontentloaded',
+    timeout: 60000
+  });
 
-  //await page.waitForTimeout(9999999);
-
-  // Enter login credentials and submit the form
-  await page.type(selectors.emailInput, email);
-  await page.type(selectors.passwordInput, password);
-
-  await page.click(selectors.loginSubmit);
-
-  // Wait for the login to complete
-  await page.waitForNavigation({ waitUntil: 'load' });
-
-  const captcha = await page.$(selectors.captcha);
-
-  if (captcha) {
-    await ask('Please solve the captcha and then press enter');
-    await page.goto('https://www.linkedin.com/', { waitUntil: 'load' });
+  const currentUrl = page.url();
+  if (!/linkedin\.com\/login/i.test(currentUrl)) {
+    console.log('An existing LinkedIn session is already active.');
+    return;
   }
 
-  console.log('Logged in to LinkedIn');
+  const emailField = await page.waitForSelector(selectors.emailInput, { visible: true, timeout: 15000 });
+  const passwordField = await page.waitForSelector(selectors.passwordInput, { visible: true, timeout: 15000 });
 
-  await page.click(selectors.skipButton).catch(() => { });
+  if (!emailField || !passwordField) {
+    throw new Error('LinkedIn login fields were not found.');
+  }
+
+  await page.click(selectors.emailInput);
+  await page.keyboard.press('Control+A');
+  await page.type(selectors.emailInput, email);
+
+  await page.click(selectors.passwordInput);
+  await page.keyboard.press('Control+A');
+  await page.type(selectors.passwordInput, password);
+
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => undefined),
+    page.click(selectors.loginSubmit)
+  ]);
+
+  await waitForHumanChallenge(page);
+
+  if (/\/login|\/checkpoint|\/challenge/i.test(page.url())) {
+    throw new Error('LinkedIn login did not complete. Finish the verification manually and restart.');
+  }
+
+  console.log('LinkedIn session ready.');
 }
 
 export default login;
