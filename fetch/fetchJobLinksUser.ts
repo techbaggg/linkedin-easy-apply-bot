@@ -57,7 +57,7 @@ async function* fetchJobLinksUser({
   for (let pageNumber = 0; pageNumber < MAX_SEARCH_PAGES; pageNumber++) {
     searchUrl.searchParams.set('start', numSeenJobs.toString());
 
-    await page.goto(searchUrl.toString(), { waitUntil: 'load' });
+    await page.goto(searchUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 30000 });
     console.log(`Job search page loaded: ${page.url()}`);
 
     await new Promise(resolve => setTimeout(resolve, 3000));
@@ -103,7 +103,7 @@ async function* fetchJobLinksUser({
 
     for (const [link, title, companyName] of candidates) {
       try {
-        await page.goto(link, { waitUntil: 'load' });
+        await page.goto(link, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
         await page.waitForFunction(
           (selectors) => {
