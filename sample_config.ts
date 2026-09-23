@@ -7,7 +7,7 @@ export default {
   // JOB SEARCH PARAMETERS
   // Broad search covering the user's documented AI, language, transcription,
   // coding/technical, data, QA and research experience.
-  KEYWORDS: "AI OR "artificial intelligence" OR "AI evaluator" OR "AI trainer" OR "LLM" OR "AI data" OR "data annotation" OR "AI coding" OR "code evaluator" OR "software QA" OR "search quality" OR "ads quality" OR translation OR translator OR MTPE OR localization OR transcription OR "language specialist" OR "language QA" OR "data analyst" OR "data quality" OR "patent research" OR "technical research" OR "content QA"",
+  KEYWORDS: 'AI OR "artificial intelligence" OR "AI evaluator" OR "AI trainer" OR "LLM" OR "AI data" OR "data annotation" OR "AI coding" OR "code evaluator" OR "software QA" OR "search quality" OR "ads quality" OR translation OR translator OR MTPE OR localization OR transcription OR "language specialist" OR "language QA" OR "data analyst" OR "data quality" OR "patent research" OR "technical research" OR "content QA"',
   LOCATION: "India",
   WORKPLACE: {
     REMOTE: true,
