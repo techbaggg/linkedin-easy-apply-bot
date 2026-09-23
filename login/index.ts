@@ -11,7 +11,18 @@ interface Params {
 
 async function isAuthenticated(page: Page): Promise<boolean> {
   const url = page.url();
-  return /linkedin\.com\/(feed|jobs|mynetwork|messaging|notifications|in)\b/i.test(url);
+
+  if (/linkedin\.com\/(feed|jobs|mynetwork|messaging|notifications|in)\b/i.test(url)) {
+    return true;
+  }
+
+  // LinkedIn can leave the URL at /login while an already-authenticated
+  // session is displaying the feed. Check for stable authenticated UI too.
+  const authenticatedUi = await page.$(
+    'nav[aria-label="Primary Navigation"], a[href*="/feed/"], a[href*="/mynetwork/"], a[href*="/messaging/"], a[href*="/notifications/"]'
+  );
+
+  return !!authenticatedUi;
 }
 
 async function waitForHumanChallenge(page: Page): Promise<void> {
@@ -32,13 +43,27 @@ async function replaceFieldValue(page: Page, selector: string, value: string): P
 }
 
 async function login({ page, email, password }: Params): Promise<void> {
+  // Go to the feed first. If the local browser session is already
+  // authenticated, this avoids interacting with the login form entirely.
+  await page.goto('https://www.linkedin.com/feed/', {
+    waitUntil: 'domcontentloaded',
+    timeout: 60000
+  });
+
+  console.log(`LinkedIn session page loaded: ${page.url()}`);
+
+  if (await isAuthenticated(page)) {
+    console.log('Existing LinkedIn session detected; continuing.');
+    return;
+  }
+
+  // An unauthenticated session normally redirects to /login.
   await page.goto('https://www.linkedin.com/login', {
     waitUntil: 'domcontentloaded',
     timeout: 60000
   });
 
-  const currentUrl = page.url();
-  console.log(`LinkedIn login page loaded: ${currentUrl}`);
+  console.log(`LinkedIn login page loaded: ${page.url()}`);
 
   if (await isAuthenticated(page)) {
     console.log('Existing LinkedIn session detected; continuing.');
