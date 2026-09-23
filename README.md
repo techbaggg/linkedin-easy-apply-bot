@@ -1,74 +1,80 @@
-# Linkedin easy apply bot
+# LinkedIn Easy Apply Helper
 
-A tool designed to save you time when applying to linkedin jobs by applying to the jobs automatically for you
+A **human-in-the-loop** helper for preparing LinkedIn Easy Apply applications.
 
-To run this tool follow the following steps
+> Important: LinkedIn's current User Agreement prohibits unauthorized bots and automated methods. This project therefore does **not** click the final Submit button. It prepares an application in the browser and stops for your manual review/submission. citeturn0search0turn0search4
 
-### First step, install the project's dependencies:
+## Requirements
+
+- Node.js 20+ recommended
+- Chrome/Chromium supplied by Puppeteer
+- A LinkedIn account
+- Your own CV and optional cover letter
+
+## Install
+
+```bash
+npm install
 ```
-npm i
+
+If your package manager blocks Puppeteer's browser download:
+
+```bash
+npx puppeteer browsers install chrome
 ```
 
-### Second step, copy the sample configuration file to your environment and fill it with your information
-```
+Puppeteer currently publishes a much newer 25.x line; this project has been upgraded from the old 19.x dependency. citeturn3search0
+
+## Configuration
+
+Copy the sample configuration:
+
+```bash
 cp sample_config.ts config.ts
 ```
-config.ts
-```TS
-export default {
-  // LOGIN DETAILS
-  LINKEDIN_EMAIL: "your-linkedin-email",
-  LINKEDIN_PASSWORD: "your-linkedin-password",
 
-  // JOB SEARCH PARAMETERS
-  KEYWORDS: "your-job-search-keywords",
-  LOCATION: "your-job-search-location",
-  WORKPLACE: {
-    REMOTE: true, // whether-you-want-remote-jobs-or-not(true/false)
-    ON_SITE: true, // whether-you-want-on-site-jobs-or-not(true/false)
-    HYBRID: true, // whether-you-want-hybrid-jobs-or-not(true/false)
-  },
-  JOB_TITLE: "a-regex-to-match-with-the-job-title",
-  JOB_DESCRIPTION: "a-regex-to-match-with-the-job-description",
+Keep `config.ts` private. The repository already ignores it.
 
-  // FORM DATA
-  PHONE: "your-phone-number",
-  CV_PATH: "path-to-your-cv",
-  COVER_LETTER_PATH: "path-to-your-cover-letter",
-  HOME_CITY: "where-you-are-based",
-  YEARS_OF_EXPERIENCE: { // an-object-with-the-skills-as-keys-and-the-years-of-experience-as-values
-    "angular": 5,
-    "react.js": 6,
-  },
-  LANGUAGE_PROFICIENCY: {  // an-object-with-the-languages-as-keys-and-your-proficiency-as-values
-    "english": "professional",
-    "spanish": "native",
-    "french": "professional"
-  },
-  REQUIRES_VISA_SPONSORSHIP: false, // whether-you-require-visa-sponsorship-or-not(true/false)
-  TEXT_FIELDS: { // an-object-with-the-regexes-to-match-input-labels-as-keys-and-the-input-values-as-values (text value)
-    "salary": "60k"
-  },
-  BOOLEANS: { // an-object-with-the-regexes-to-match-input-labels-as-keys-and-the-input-values-as-values (true/false value)
-    "bachelhor|bacharelado": true,
-    "authorized": true
-  },
-  MULTIPLE_CHOICE_FIELDS: { // an-object-with-the-regexes-to-match-input-labels-as-keys-and-the-input-values-as-values (option value)
-    "pronouns": "They/them"
-  },
+Prefer environment variables for credentials:
 
-  // OTHER SETTINGS
-  SINGLE_PAGE: false, // whether-you-want-the-applied-job-windows-to-close-after-applying(true/false)
-}
-```
+**Windows PowerShell**
 
-### Third step, run the program
-
-```
-npm run apply
-```
-
-To run the program without pressing the submit form button (for testing purposes)
-```
+```powershell
+$env:LINKEDIN_EMAIL="your-email"
+$env:LINKEDIN_PASSWORD="your-password"
 npm run start
 ```
+
+**macOS/Linux**
+
+```bash
+LINKEDIN_EMAIL="your-email" LINKEDIN_PASSWORD="your-password" npm run start
+```
+
+All other job/application settings remain in `config.ts`.
+
+## What the program does
+
+1. Opens a visible browser.
+2. Logs into LinkedIn.
+3. Stops for any CAPTCHA, checkpoint, or verification challenge.
+4. Searches according to your configured criteria.
+5. Opens matching Easy Apply jobs.
+6. Fills fields that match your configured answers.
+7. Advances through the application form where possible.
+8. Stops when the final application is ready.
+9. Leaves the browser open so **you can review and submit manually**.
+
+It never clicks the final Submit button.
+
+LinkedIn says Easy Apply has daily and speed limits and that these measures are intended in part to curb automation and bots. citeturn0search2
+
+## Test the TypeScript
+
+```bash
+npm run check
+```
+
+## Important
+
+Do not attempt to bypass LinkedIn CAPTCHA, checkpoints, rate limits, access controls, or other security measures. LinkedIn states that unauthorized automated activity can result in account restrictions. citeturn0search4turn0search5
